@@ -85,6 +85,10 @@ prometheus.relabel "snmp_metrics" {
 
 // Store metrics locally
 prometheus.remote_write "local_storage" {
+  endpoint {
+    url = "http://localhost:9090/api/v1/write"
+    // or wherever you want to send metrics
+  }
   wal {
     truncate_frequency = "2h"
   }
