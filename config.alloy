@@ -1,0 +1,91 @@
+// Fixed Grafana Alloy configuration with SNMP monitoring
+
+logging {
+  level  = "info"
+  format = "logfmt"
+}
+
+// Self-monitoring: Scrape Alloy's own metrics
+prometheus.scrape "alloy_self" {
+  targets = [
+    {"__address__" = "127.0.0.1:12345"},
+  ]
+  forward_to = [prometheus.relabel.alloy_metrics.receiver]
+  scrape_interval = "15s"
+  metrics_path = "/metrics"
+  job_name = "alloy-self"
+}
+
+prometheus.relabel "alloy_metrics" {
+  forward_to = [prometheus.remote_write.local_storage.receiver]
+  
+  rule {
+    target_label = "instance"
+    replacement = "alloy-local"
+  }
+  
+  rule {
+    target_label = "job" 
+    replacement = "alloy-self-monitoring"
+  }
+}
+
+// SNMP Exporter configuration
+prometheus.exporter.snmp "network_devices" {
+  config_file = "/etc/alloy/snmp.yml"
+}
+
+// Static SNMP targets (easier to configure)
+prometheus.scrape "snmp_monitoring" {
+  targets = [
+    {
+      "__address__" = "127.0.0.1:9116",
+      "__param_target" = "192.168.0.102",
+      "__param_module" = "if_mib",
+      "device_name" = "local_server",
+      "device_type" = "server",
+    },
+    {
+      "__address__" = "127.0.0.1:9116", 
+      "__param_target" = "192.168.1.10",
+      "__param_module" = "if_mib", 
+      "device_name" = "main_switch",
+      "device_type" = "switch",
+    },
+  ]
+  forward_to = [prometheus.relabel.snmp_metrics.receiver]
+  scrape_interval = "60s"
+  scrape_timeout = "30s"
+  metrics_path = "/snmp"
+  job_name = "snmp"
+}
+
+// Label SNMP metrics
+prometheus.relabel "snmp_metrics" {
+  forward_to = [prometheus.remote_write.local_storage.receiver]
+  
+  // Keep the target IP as instance label
+  rule {
+    source_labels = ["__param_target"]
+    target_label = "instance"
+  }
+  
+  // Add job label
+  rule {
+    target_label = "job"
+    replacement = "snmp-monitoring"
+  }
+  
+  // Add location label
+  rule {
+    target_label = "location"
+    replacement = "office_main"
+  }
+}
+
+// Store metrics locally
+prometheus.remote_write "local_storage" {
+  wal {
+    truncate_frequency = "2h"
+  }
+}
